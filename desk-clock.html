@@ -14,8 +14,8 @@ html,body{height:100%;margin:0;background:#000;color:var(--ink);overflow:hidden;
 #bg,#shade{position:fixed;inset:0}
 #bg{background:#000 center/cover no-repeat}
 #shade{background:rgba(0,0,0,.45)}
-#pages{position:relative;display:flex;width:200vw;height:100%;transition:transform .45s ease;touch-action:pan-y}
-.pg{position:relative;width:100vw;height:100%;overflow:hidden}
+#pages{position:relative;width:100vw;height:100%;overflow:hidden;touch-action:pan-y}
+.pg{position:absolute;left:0;top:0;width:100vw;height:100%;overflow:hidden;transition:transform .45s ease}
 #p0{display:flex;align-items:center;justify-content:center}
 #an{height:84vh;width:84vh}
 #an text{fill:var(--ink);text-anchor:middle;font-family:inherit}
@@ -37,8 +37,14 @@ html,body{height:100%;margin:0;background:#000;color:var(--ink);overflow:hidden;
 .s-mid #dc{--x:0vw;--y:0vh;--s:.7}.s-mid #cal{--x:36vw;--y:31vh;--s:.24;opacity:.85}
 .s-swap #dc{--x:36vw;--y:31vh;--s:.26}.s-swap #cal{--x:0vw;--y:0vh;--s:1.2;opacity:1}
 .s-cal #dc{--x:-37vw;--y:-33vh;--s:.2}.s-cal #cal{--x:0vw;--y:0vh;--s:1.2;opacity:1}
-#gear{position:fixed;top:calc(env(safe-area-inset-top,0px) + 2vh);right:2vh;z-index:5;background:none;border:0;
-  color:var(--dim);font:inherit;font-size:3.4vh;padding:1.2vh 1.6vh;opacity:.55}
+#gear{position:fixed;top:calc(env(safe-area-inset-top,0px) + 2vh);right:2vh;z-index:5;background:rgba(0,0,0,.4);border:0;border-radius:2vh;
+  color:var(--ink);font:inherit;font-size:3.4vh;padding:1.2vh 2vh;opacity:0;pointer-events:none;transition:opacity .4s}
+#gear.show{opacity:.85;pointer-events:auto}
+#mb{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 3vh);transform:translateX(-50%);z-index:4;display:none;
+  align-items:center;gap:1vh;background:rgba(0,0,0,.45);border-radius:6vh;padding:1vh 3vh;max-width:56vw}
+#mb.on{display:flex}
+#mt{font-size:3.4vh;color:var(--sub);max-width:26vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#mb button{background:none;border:0;color:var(--ink);font:inherit;font-size:4.4vh;padding:.4vh 1.6vh}
 #sheet{position:fixed;inset:0;z-index:20;background:rgba(0,0,0,.82);display:none;align-items:center;justify-content:center}
 #sheet.on{display:flex}
 .card{background:#181816;border-radius:2.4vh;padding:3vh;width:min(84vw,760px);max-height:88vh;overflow:auto;font-size:3.6vh}
@@ -66,12 +72,13 @@ html,body{height:100%;margin:0;background:#000;color:var(--ink);overflow:hidden;
       <text id="e2" y="59" font-size="7" font-weight="300" opacity=".85"></text>
     </svg>
   </section>
-  <section class="pg s-full" id="p1">
+  <section class="pg s-full" id="p1" style="transform:translateX(100vw)">
     <div id="dc"><div id="dt">00:00</div><div id="dd"></div></div>
     <div id="cal"><div id="ch"></div><div id="cg"></div></div>
   </section>
 </div>
 <button id="gear">설정</button>
+<div id="mb"><span id="mt"></span><button id="mv">⏮</button><button id="ml">▶</button><button id="mx">⏭</button></div>
 <div id="sheet"><div class="card">
   <h3>배경</h3>
   <button id="bgb">사진 고르기</button><button id="bgx">배경 지우기</button>
@@ -80,6 +87,9 @@ html,body{height:100%;margin:0;background:#000;color:var(--ink);overflow:hidden;
   <input type="date" id="ed"><textarea id="et" placeholder="한 줄에 하나씩&#10;예) 14:00 치과"></textarea>
   <button id="es">일정 저장</button>
   <div class="hint">아날로그 시계에는 오늘 일정 중 앞의 2개가 표시돼요.</div>
+  <h3>연동 (앱에서만 동작)</h3>
+  <button id="pc">캘린더 허용</button><button id="pm">미디어 허용</button>
+  <div class="hint">미디어는 열리는 화면에서 '탁상시계'를 켜 주세요.</div>
   <h3>화면</h3>
   <button id="fs">전체화면 + 화면 켜짐 유지</button><button id="cl">닫기</button>
 </div></div>
@@ -93,6 +103,16 @@ function ymd(d){return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())}
 function evs(){try{return JSON.parse(get("dc_ev")||"{}")}catch(e){return {}}}
 var D=["일","월","화","수","목","금","토"];
 
+var nat={};
+function evOf(k){return (nat[k]||[]).concat(evs()[k]||[])}
+function loadNat(){
+  try{
+    if(!window.Native)return;
+    var a=JSON.parse(Native.calendar()),m={};
+    a.forEach(function(x){(m[x.d]=m[x.d]||[]).push(x.l+" "+x.t)});
+    nat=m;drawCal();tick();
+  }catch(e){}
+}
 function applyBg(){var b=get("dc_bg");$("bg").style.backgroundImage=b?"url("+b+")":"none";$("shade").style.display=b?"block":"none"}
 applyBg();
 
@@ -104,7 +124,7 @@ function tick(){
   var ds=(d.getMonth()+1)+"월 "+d.getDate()+"일 "+D[d.getDay()]+"요일";
   $("dd").textContent=ds;$("ad").textContent=ds;
   rot("hh",(h%12+m/60)*30);rot("mh",(m+s/60)*6);rot("sh",s*6);
-  var list=(evs()[ymd(d)]||[]);
+  var list=evOf(ymd(d));
   $("e1").textContent=cut(list[0]);$("e2").textContent=cut(list[1]);
 }
 tick();setInterval(tick,200);
@@ -116,7 +136,7 @@ function drawCal(){
   var first=new Date(y,mo,1).getDay(),days=new Date(y,mo+1,0).getDate();
   for(i=0;i<first;i++)g+="<div></div>";
   for(i=1;i<=days;i++){
-    var k=y+"-"+p(mo+1)+"-"+p(i),c=(i===n.getDate()?"t":"")+(e[k]&&e[k].length?" e":"");
+    var k=y+"-"+p(mo+1)+"-"+p(i),c=(i===n.getDate()?"t":"")+(evOf(k).length?" e":"");
     g+='<div class="'+c+'">'+i+"</div>";
   }
   $("cg").innerHTML=g;
@@ -145,12 +165,20 @@ $("dc").onclick=function(){
 
 // 좌우 스와이프
 var x0=null,pg=$("pages");
-function go(i){pg.style.transform="translateX("+(-100*i)+"vw)"}
+var cur=0;
+function go(dir){
+  var a=$("p"+cur),nx=1-cur,b=$("p"+nx);
+  b.style.transition="none";b.style.transform="translateX("+(dir*100)+"vw)";
+  void b.offsetWidth;
+  b.style.transition="";
+  a.style.transform="translateX("+(-dir*100)+"vw)";b.style.transform="translateX(0)";
+  cur=nx;
+}
 pg.addEventListener("pointerdown",function(e){x0=e.clientX;moved=false});
 pg.addEventListener("pointerup",function(e){
   if(x0===null)return;var dx=e.clientX-x0;x0=null;
   moved=Math.abs(dx)>=10;
-  if(dx<-60)go(1);else if(dx>60)go(0);
+  if(dx<-60)go(1);else if(dx>60)go(-1);
 });
 pg.addEventListener("pointercancel",function(){x0=null});
 
@@ -189,6 +217,37 @@ $("bgf").onchange=function(){
   r.readAsDataURL(f);
 };
 $("ed").onchange=loadEd;
+
+// 화면을 터치하면 설정 버튼이 잠깐 나타남
+var gt;
+document.addEventListener("pointerdown",function(){
+  var g=$("gear");g.classList.add("show");
+  clearTimeout(gt);gt=setTimeout(function(){g.classList.remove("show")},4000);
+});
+
+// 미디어 제어 바 (앱에서만)
+var playing=false;
+function pollMedia(){
+  try{
+    if(!window.Native)return;
+    var m=JSON.parse(Native.media());
+    $("mb").className=m.has?"on":"";
+    $("mt").textContent=(m.title||"")+(m.artist?" - "+m.artist:"");
+    playing=!!m.playing;$("ml").textContent=playing?"⏸":"▶";
+  }catch(e){}
+}
+function mcmd(c){try{Native.mediaCmd(c)}catch(e){}setTimeout(pollMedia,350)}
+$("mv").onclick=function(){mcmd("prev")};
+$("mx").onclick=function(){mcmd("next")};
+$("ml").onclick=function(){mcmd(playing?"pause":"play")};
+setInterval(pollMedia,1500);pollMedia();
+
+// 앱 연동 권한 버튼
+$("pc").onclick=function(){try{Native.requestCalendar()}catch(e){alert("앱(APK)에서만 쓸 수 있어요")}};
+$("pm").onclick=function(){try{Native.openMediaSettings()}catch(e){alert("앱(APK)에서만 쓸 수 있어요")}};
+
+// 삼성 캘린더 일정 불러오기 (앱에서만)
+loadNat();setInterval(loadNat,60000);
 $("es").onclick=function(){
   var e=evs(),k=$("ed").value;if(!k)return;
   var l=$("et").value.split("\n").map(function(x){return x.trim()}).filter(Boolean);

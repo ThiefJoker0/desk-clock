@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>탁상시계</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400&display=swap">
+<style>
+:root{--ink:#f4f1ea;--sub:#c4c0b7;--dim:rgba(244,241,234,.5);--acc:#e9c46a;
+  box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+html,body{height:100%;margin:0;background:#000;color:var(--ink);overflow:hidden;
+  font-family:"Outfit","Helvetica Neue",Arial,sans-serif;-webkit-tap-highlight-color:transparent;user-select:none}
+#bg,#shade{position:fixed;inset:0}
+#bg{background:#000 center/cover no-repeat}
+#shade{background:rgba(0,0,0,.45)}
+#pages{position:relative;display:flex;width:200vw;height:100%;transition:transform .45s ease;touch-action:pan-y}
+.pg{position:relative;width:100vw;height:100%;overflow:hidden}
+#p0{display:flex;align-items:center;justify-content:center}
+#an{height:84vh;width:84vh}
+#an text{fill:var(--ink);text-anchor:middle;font-family:inherit}
+#dc,#cal{position:absolute;left:50%;top:50%;transform-origin:center;
+  transform:translate(-50%,-50%) translate(var(--x),var(--y)) scale(var(--s));
+  transition:transform 1.5s cubic-bezier(.65,0,.35,1),opacity 1.5s}
+#dc{text-align:center;white-space:nowrap;line-height:1}
+#dt{font-size:min(27vw,60vh);font-weight:200;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+#dd{font-size:min(3.4vw,7vh);font-weight:300;color:var(--sub);margin-top:2vh}
+#cal{width:56vh}
+#ch{font-size:5.6vh;font-weight:300;text-align:center;margin-bottom:2.4vh}
+#cg{display:grid;grid-template-columns:repeat(7,1fr);row-gap:1.4vh;font-size:4vh;font-weight:300;text-align:center}
+#cg .w{color:var(--dim);font-size:3.2vh}
+#cg .t{background:var(--ink);color:#111;border-radius:50%;font-weight:400}
+#cg .e::after{content:"";display:block;width:.9vh;height:.9vh;border-radius:50%;background:var(--acc);margin:0 auto}
+.s-full #dc{--x:0vw;--y:0vh;--s:1}.s-full #cal{--x:36vw;--y:31vh;--s:.24;opacity:.85}
+.s-L #dc{--x:-26vw;--y:0vh;--s:.4}.s-L #cal{--x:24vw;--y:0vh;--s:1;opacity:1}
+.s-R #dc{--x:26vw;--y:0vh;--s:.4}.s-R #cal{--x:-24vw;--y:0vh;--s:1;opacity:1}
+.s-mid #dc{--x:0vw;--y:0vh;--s:.7}.s-mid #cal{--x:36vw;--y:31vh;--s:.24;opacity:.85}
+.s-swap #dc{--x:36vw;--y:31vh;--s:.26}.s-swap #cal{--x:0vw;--y:0vh;--s:1.2;opacity:1}
+.s-cal #dc{--x:-37vw;--y:-33vh;--s:.2}.s-cal #cal{--x:0vw;--y:0vh;--s:1.2;opacity:1}
+#gear{position:fixed;top:calc(env(safe-area-inset-top,0px) + 2vh);right:2vh;z-index:5;background:none;border:0;
+  color:var(--dim);font:inherit;font-size:3.4vh;padding:1.2vh 1.6vh;opacity:.55}
+#sheet{position:fixed;inset:0;z-index:20;background:rgba(0,0,0,.82);display:none;align-items:center;justify-content:center}
+#sheet.on{display:flex}
+.card{background:#181816;border-radius:2.4vh;padding:3vh;width:min(84vw,760px);max-height:88vh;overflow:auto;font-size:3.6vh}
+.card button,.card input,.card textarea{font:inherit;font-size:3.4vh;color:var(--ink);background:#2a2a27;border:0;border-radius:1.4vh;padding:1.4vh 2vh;margin:.6vh .4vh}
+.card textarea{width:calc(100% - 1.2vh);height:12vh;box-sizing:border-box;display:block}
+.card h3{margin:1vh 0 .6vh;font-weight:400;font-size:3.6vh}
+.card .hint{font-size:2.8vh;color:var(--dim)}
+#rot{position:fixed;inset:0;z-index:50;background:#000;color:var(--sub);display:none;align-items:center;justify-content:center;
+  font-size:6vw;text-align:center}
+@media (orientation:portrait){#rot{display:flex}}
+</style>
+</head>
+<body>
+<div id="bg"></div><div id="shade"></div>
+<div id="pages">
+  <section class="pg" id="p0">
+    <svg id="an" viewBox="-100 -100 200 200">
+      <circle r="97" fill="rgba(0,0,0,.28)" stroke="rgba(244,241,234,.55)" stroke-width="1.2"/>
+      <line id="hh" y2="-46" stroke="#f4f1ea" stroke-width="5" stroke-linecap="round"/>
+      <line id="mh" y2="-72" stroke="#f4f1ea" stroke-width="3.4" stroke-linecap="round"/>
+      <line id="sh" y1="10" y2="-80" stroke="#e9c46a" stroke-width="1.4" stroke-linecap="round"/>
+      <circle r="4" fill="#e9c46a"/>
+      <text id="ad" y="30" font-size="9" font-weight="400"></text>
+      <text id="e1" y="47" font-size="7" font-weight="300" opacity=".85"></text>
+      <text id="e2" y="59" font-size="7" font-weight="300" opacity=".85"></text>
+    </svg>
+  </section>
+  <section class="pg s-full" id="p1">
+    <div id="dc"><div id="dt">00:00</div><div id="dd"></div></div>
+    <div id="cal"><div id="ch"></div><div id="cg"></div></div>
+  </section>
+</div>
+<button id="gear">설정</button>
+<div id="sheet"><div class="card">
+  <h3>배경</h3>
+  <button id="bgb">사진 고르기</button><button id="bgx">배경 지우기</button>
+  <input type="file" id="bgf" accept="image/*" hidden>
+  <h3>일정</h3>
+  <input type="date" id="ed"><textarea id="et" placeholder="한 줄에 하나씩&#10;예) 14:00 치과"></textarea>
+  <button id="es">일정 저장</button>
+  <div class="hint">아날로그 시계에는 오늘 일정 중 앞의 2개가 표시돼요.</div>
+  <h3>화면</h3>
+  <button id="fs">전체화면 + 화면 켜짐 유지</button><button id="cl">닫기</button>
+</div></div>
+<div id="rot">휴대폰을 가로로 돌려주세요</div>
+<script>
+var $=function(i){return document.getElementById(i)};
+function p(n){return n<10?"0"+n:""+n}
+function get(k){try{return localStorage.getItem(k)}catch(e){return null}}
+function set(k,v){try{if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,v);return true}catch(e){return false}}
+function ymd(d){return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())}
+function evs(){try{return JSON.parse(get("dc_ev")||"{}")}catch(e){return {}}}
+var D=["일","월","화","수","목","금","토"];
+
+function applyBg(){var b=get("dc_bg");$("bg").style.backgroundImage=b?"url("+b+")":"none";$("shade").style.display=b?"block":"none"}
+applyBg();
+
+function rot(id,deg){$(id).setAttribute("transform","rotate("+deg+")")}
+function cut(s){s=s||"";return s.length>15?s.slice(0,14)+"…":s}
+function tick(){
+  var d=new Date(),h=d.getHours(),m=d.getMinutes(),s=d.getSeconds()+d.getMilliseconds()/1000;
+  $("dt").textContent=p(h)+":"+p(m);
+  var ds=(d.getMonth()+1)+"월 "+d.getDate()+"일 "+D[d.getDay()]+"요일";
+  $("dd").textContent=ds;$("ad").textContent=ds;
+  rot("hh",(h%12+m/60)*30);rot("mh",(m+s/60)*6);rot("sh",s*6);
+  var list=(evs()[ymd(d)]||[]);
+  $("e1").textContent=cut(list[0]);$("e2").textContent=cut(list[1]);
+}
+tick();setInterval(tick,200);
+
+function drawCal(){
+  var n=new Date(),y=n.getFullYear(),mo=n.getMonth(),e=evs();
+  $("ch").textContent=y+"년 "+(mo+1)+"월";
+  var g="";for(var i=0;i<7;i++)g+='<div class="w">'+D[i]+'</div>';
+  var first=new Date(y,mo,1).getDay(),days=new Date(y,mo+1,0).getDate();
+  for(i=0;i<first;i++)g+="<div></div>";
+  for(i=1;i<=days;i++){
+    var k=y+"-"+p(mo+1)+"-"+p(i),c=(i===n.getDate()?"t":"")+(e[k]&&e[k].length?" e":"");
+    g+='<div class="'+c+'">'+i+"</div>";
+  }
+  $("cg").innerHTML=g;
+}
+drawCal();setInterval(drawCal,60000);
+
+// 디지털 페이지 연출: 시계 -> 좌우 교차 반복 -> 캘린더 -> 시계
+var seq=[["s-full",300000],["s-L",7000],["s-mid",6000],["s-R",7000],["s-mid",6000],["s-L",7000]],si=0;
+var tm,swapped=false;
+function step(){
+  clearTimeout(tm);
+  $("p1").className="pg "+seq[si][0];
+  var t=seq[si][1];si=(si+1)%seq.length;tm=setTimeout(step,t);
+}
+step();
+// 탭으로 크기·위치 맞바꾸기 (캘린더 탭 -> 캘린더 크게, 시계 탭 -> 시계 크게)
+var moved=false;
+$("cal").onclick=function(){
+  if(moved||swapped)return;
+  swapped=true;clearTimeout(tm);$("p1").className="pg s-swap";
+};
+$("dc").onclick=function(){
+  if(moved||!swapped)return;
+  swapped=false;si=0;step();
+};
+
+// 좌우 스와이프
+var x0=null,pg=$("pages");
+function go(i){pg.style.transform="translateX("+(-100*i)+"vw)"}
+pg.addEventListener("pointerdown",function(e){x0=e.clientX;moved=false});
+pg.addEventListener("pointerup",function(e){
+  if(x0===null)return;var dx=e.clientX-x0;x0=null;
+  moved=Math.abs(dx)>=10;
+  if(dx<-60)go(1);else if(dx>60)go(0);
+});
+pg.addEventListener("pointercancel",function(){x0=null});
+
+// 화면 켜짐 / 전체화면 / 가로 고정
+function keepAwake(){try{if("wakeLock" in navigator)navigator.wakeLock.request("screen").catch(function(){})}catch(e){}}
+document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")keepAwake()});
+keepAwake();
+function full(){
+  keepAwake();
+  try{
+    var r=document.documentElement.requestFullscreen();
+    if(r&&r.then)r.then(function(){try{screen.orientation.lock("landscape").catch(function(){})}catch(e){}}).catch(function(){});
+  }catch(e){}
+}
+
+// 설정
+function loadEd(){$("et").value=(evs()[$("ed").value]||[]).join("\n")}
+$("gear").onclick=function(){$("sheet").className="on";$("ed").value=ymd(new Date());loadEd()};
+$("cl").onclick=function(){$("sheet").className=""};
+$("fs").onclick=function(){full();$("sheet").className=""};
+$("bgb").onclick=function(){$("bgf").click()};
+$("bgx").onclick=function(){set("dc_bg",null);applyBg()};
+$("bgf").onchange=function(){
+  var f=this.files[0];if(!f)return;
+  var r=new FileReader();
+  r.onload=function(){
+    var im=new Image();
+    im.onload=function(){
+      var s=Math.min(1,1800/Math.max(im.width,im.height)),c=document.createElement("canvas");
+      c.width=im.width*s;c.height=im.height*s;c.getContext("2d").drawImage(im,0,0,c.width,c.height);
+      if(!set("dc_bg",c.toDataURL("image/jpeg",.78)))alert("사진이 너무 커서 저장하지 못했어요. 더 작은 사진으로 시도해 보세요.");
+      applyBg();
+    };
+    im.src=r.result;
+  };
+  r.readAsDataURL(f);
+};
+$("ed").onchange=loadEd;
+$("es").onclick=function(){
+  var e=evs(),k=$("ed").value;if(!k)return;
+  var l=$("et").value.split("\n").map(function(x){return x.trim()}).filter(Boolean);
+  if(l.length)e[k]=l;else delete e[k];
+  set("dc_ev",JSON.stringify(e));drawCal();tick();
+};
+</script>
+</body>
+</html>

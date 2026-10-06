@@ -40,6 +40,9 @@ html,body{height:100%;margin:0;background:#000;color:var(--ink);overflow:hidden;
 #gear{position:fixed;top:calc(env(safe-area-inset-top,0px) + 2vh);right:2vh;z-index:5;background:rgba(0,0,0,.4);border:0;border-radius:2vh;
   color:var(--ink);font:inherit;font-size:3.4vh;padding:1.2vh 2vh;opacity:0;pointer-events:none;transition:opacity .4s}
 #gear.show{opacity:.85;pointer-events:auto}
+.rp{position:fixed;z-index:60;width:10vh;height:10vh;margin:-5vh 0 0 -5vh;border-radius:50%;border:.5vh solid rgba(255,255,255,.85);
+  background:rgba(255,255,255,.18);pointer-events:none;animation:rp .6s ease-out forwards}
+@keyframes rp{from{transform:scale(.3);opacity:1}to{transform:scale(1.4);opacity:0}}
 #mb{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 3vh);transform:translateX(-50%);z-index:4;display:none;
   align-items:center;gap:1vh;background:rgba(0,0,0,.45);border-radius:6vh;padding:1vh 3vh;max-width:56vw}
 #mb.on{display:flex}
@@ -90,6 +93,7 @@ html,body{height:100%;margin:0;background:#000;color:var(--ink);overflow:hidden;
   <h3>연동 (앱에서만 동작)</h3>
   <button id="pc">캘린더 허용</button><button id="pm">미디어 허용</button>
   <div class="hint">미디어는 열리는 화면에서 '탁상시계'를 켜 주세요.</div>
+  <div class="hint" id="st"></div>
   <h3>화면</h3>
   <button id="fs">전체화면 + 화면 켜짐 유지</button><button id="cl">닫기</button>
 </div></div>
@@ -196,7 +200,15 @@ function full(){
 
 // 설정
 function loadEd(){$("et").value=(evs()[$("ed").value]||[]).join("\n")}
-$("gear").onclick=function(){$("sheet").className="on";$("ed").value=ymd(new Date());loadEd()};
+function showStatus(){
+  var s=$("st");
+  if(!window.Native){s.textContent="지금은 웹 버전이에요. 캘린더·미디어 연동은 설치한 앱(APK)에서만 동작해요.";return}
+  try{
+    var o=JSON.parse(Native.status());
+    s.textContent="캘린더 권한 "+(o.cal?"✓ (이번 달 "+o.n+"개)":"✗")+"  ·  미디어 접근 "+(o.media?"✓":"✗");
+  }catch(e){s.textContent="상태를 확인하지 못했어요. 앱을 최신 버전으로 다시 설치해 주세요."}
+}
+$("gear").onclick=function(){$("sheet").className="on";$("ed").value=ymd(new Date());loadEd();showStatus()};
 $("cl").onclick=function(){$("sheet").className=""};
 $("fs").onclick=function(){full();$("sheet").className=""};
 $("bgb").onclick=function(){$("bgf").click()};
@@ -220,7 +232,10 @@ $("ed").onchange=loadEd;
 
 // 화면을 터치하면 설정 버튼이 잠깐 나타남
 var gt;
-document.addEventListener("pointerdown",function(){
+document.addEventListener("pointerdown",function(e){
+  var r=document.createElement("div");r.className="rp";
+  r.style.left=e.clientX+"px";r.style.top=e.clientY+"px";
+  document.body.appendChild(r);setTimeout(function(){r.remove()},650);
   var g=$("gear");g.classList.add("show");
   clearTimeout(gt);gt=setTimeout(function(){g.classList.remove("show")},4000);
 });

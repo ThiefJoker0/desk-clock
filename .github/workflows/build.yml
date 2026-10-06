@@ -16,10 +16,12 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+
+      - name: Accept SDK licenses
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
 
       - name: Generate Android project
         run: |
@@ -54,8 +56,8 @@ jobs:
               applicationId 'com.example.deskclock'
               minSdk 26
               targetSdk 34
-              versionCode 1
-              versionName '1.0'
+              versionCode 2
+              versionName '1.1'
             }
             compileOptions {
               sourceCompatibility JavaVersion.VERSION_17
@@ -66,6 +68,7 @@ jobs:
 
           cat > app/src/main/AndroidManifest.xml <<'EOF'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+            <uses-permission android:name="android.permission.READ_CALENDAR"/>
             <application
                 android:label="탁상시계"
                 android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen">
@@ -79,37 +82,121 @@ jobs:
                   <category android:name="android.intent.category.LAUNCHER"/>
                 </intent-filter>
               </activity>
+              <service
+                  android:name=".MediaListener"
+                  android:label="탁상시계"
+                  android:exported="true"
+                  android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+                <intent-filter>
+                  <action android:name="android.service.notification.NotificationListenerService"/>
+                </intent-filter>
+              </service>
             </application>
           </manifest>
+          EOF
+
+          cat > app/src/main/java/com/example/deskclock/MediaListener.java <<'EOF'
+          package com.example.deskclock;
+
+          import android.service.notification.NotificationListenerService;
+
+          public class MediaListener extends NotificationListenerService {
+          }
           EOF
 
           cat > app/src/main/java/com/example/deskclock/MainActivity.java <<'EOF'
           package com.example.deskclock;
 
+          import android.Manifest;
           import android.app.Activity;
+          import android.content.ComponentName;
+          import android.content.ContentUris;
+          import android.content.Context;
+          import android.content.Intent;
+          import android.content.pm.PackageManager;
+          import android.database.Cursor;
+          import android.media.MediaMetadata;
+          import android.media.session.MediaController;
+          import android.media.session.MediaSessionManager;
+          import android.media.session.PlaybackState;
+          import android.net.Uri;
           import android.os.Bundle;
+          import android.provider.CalendarContract;
+          import android.provider.Settings;
           import android.view.View;
           import android.view.WindowManager;
+          import android.webkit.JavascriptInterface;
+          import android.webkit.ValueCallback;
+          import android.webkit.WebChromeClient;
           import android.webkit.WebSettings;
           import android.webkit.WebView;
           import android.webkit.WebViewClient;
+          import org.json.JSONArray;
+          import org.json.JSONObject;
+          import java.text.SimpleDateFormat;
+          import java.util.Calendar;
+          import java.util.Date;
+          import java.util.List;
+          import java.util.Locale;
+          import java.util.TimeZone;
 
           public class MainActivity extends Activity {
             WebView w;
+            ValueCallback<Uri[]> fileCb;
 
             @Override
             protected void onCreate(Bundle b) {
               super.onCreate(b);
               getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+              if (checkSelfPermission(Manifest.permission.READ_CALENDAR) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{Manifest.permission.READ_CALENDAR}, 1);
+              }
               w = new WebView(this);
               WebSettings s = w.getSettings();
               s.setJavaScriptEnabled(true);
               s.setDomStorageEnabled(true);
               w.setBackgroundColor(0xFF000000);
               w.setWebViewClient(new WebViewClient());
+              w.setWebChromeClient(new WebChromeClient() {
+                @Override
+                public boolean onShowFileChooser(WebView v, ValueCallback<Uri[]> cb, FileChooserParams p) {
+                  if (fileCb != null) fileCb.onReceiveValue(null);
+                  fileCb = cb;
+                  Intent i = new Intent(Intent.ACTION_GET_CONTENT);
+                  i.addCategory(Intent.CATEGORY_OPENABLE);
+                  i.setType("image/*");
+                  try {
+                    startActivityForResult(Intent.createChooser(i, "사진 선택"), 2);
+                  } catch (Exception e) {
+                    fileCb = null;
+                    return false;
+                  }
+                  return true;
+                }
+              });
+              w.addJavascriptInterface(new Bridge(), "Native");
               w.loadUrl("file:///android_asset/index.html");
               setContentView(w);
               hideBars();
+            }
+
+            @Override
+            public void onRequestPermissionsResult(int rc, String[] p, int[] r) {
+              super.onRequestPermissionsResult(rc, p, r);
+              w.evaluateJavascript("loadNat()", null);
+            }
+
+            @Override
+            protected void onActivityResult(int rq, int rs, Intent d) {
+              super.onActivityResult(rq, rs, d);
+              if (rq == 2 && fileCb != null) {
+                Uri[] r = null;
+                if (rs == RESULT_OK && d != null && d.getData() != null) {
+                  r = new Uri[]{d.getData()};
+                }
+                fileCb.onReceiveValue(r);
+                fileCb = null;
+              }
             }
 
             void hideBars() {
@@ -126,6 +213,153 @@ jobs:
             public void onWindowFocusChanged(boolean f) {
               super.onWindowFocusChanged(f);
               if (f) hideBars();
+            }
+
+            static String s(String x) {
+              return x == null ? "" : x;
+            }
+
+            MediaController ctl() {
+              try {
+                MediaSessionManager m = (MediaSessionManager) getSystemService(Context.MEDIA_SESSION_SERVICE);
+                List<MediaController> l = m.getActiveSessions(new ComponentName(this, MediaListener.class));
+                MediaController first = null;
+                for (MediaController c : l) {
+                  if (first == null) first = c;
+                  PlaybackState ps = c.getPlaybackState();
+                  if (ps != null && ps.getState() == PlaybackState.STATE_PLAYING) return c;
+                }
+                return first;
+              } catch (Exception e) {
+                return null;
+              }
+            }
+
+            class Bridge {
+              @JavascriptInterface
+              public String calendar() {
+                JSONArray out = new JSONArray();
+                try {
+                  if (checkSelfPermission(Manifest.permission.READ_CALENDAR) != PackageManager.PERMISSION_GRANTED) {
+                    return "[]";
+                  }
+                  Calendar c = Calendar.getInstance();
+                  c.set(Calendar.DAY_OF_MONTH, 1);
+                  c.set(Calendar.HOUR_OF_DAY, 0);
+                  c.set(Calendar.MINUTE, 0);
+                  c.set(Calendar.SECOND, 0);
+                  c.set(Calendar.MILLISECOND, 0);
+                  long from = c.getTimeInMillis() - 86400000L;
+                  c.add(Calendar.MONTH, 1);
+                  long to = c.getTimeInMillis() + 86400000L;
+                  Uri.Builder bu = CalendarContract.Instances.CONTENT_URI.buildUpon();
+                  ContentUris.appendId(bu, from);
+                  ContentUris.appendId(bu, to);
+                  String[] proj = {
+                    CalendarContract.Instances.TITLE,
+                    CalendarContract.Instances.BEGIN,
+                    CalendarContract.Instances.ALL_DAY
+                  };
+                  Cursor cu = getContentResolver().query(bu.build(), proj, null, null,
+                      CalendarContract.Instances.BEGIN + " ASC");
+                  if (cu != null) {
+                    SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
+                    SimpleDateFormat tf = new SimpleDateFormat("HH:mm", Locale.US);
+                    SimpleDateFormat uf = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
+                    uf.setTimeZone(TimeZone.getTimeZone("UTC"));
+                    while (cu.moveToNext()) {
+                      String t = cu.getString(0);
+                      long bg = cu.getLong(1);
+                      boolean allDay = cu.getInt(2) == 1;
+                      Date dd = new Date(bg);
+                      JSONObject o = new JSONObject();
+                      o.put("t", s(t));
+                      if (allDay) {
+                        o.put("d", uf.format(dd));
+                        o.put("l", "종일");
+                      } else {
+                        o.put("d", df.format(dd));
+                        o.put("l", tf.format(dd));
+                      }
+                      out.put(o);
+                    }
+                    cu.close();
+                  }
+                } catch (Exception ex) {
+                }
+                return out.toString();
+              }
+
+              @JavascriptInterface
+              public String status() {
+                JSONObject o = new JSONObject();
+                try {
+                  o.put("cal", checkSelfPermission(Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED);
+                  o.put("n", new JSONArray(calendar()).length());
+                  boolean ok = false;
+                  try {
+                    MediaSessionManager m = (MediaSessionManager) getSystemService(Context.MEDIA_SESSION_SERVICE);
+                    m.getActiveSessions(new ComponentName(MainActivity.this, MediaListener.class));
+                    ok = true;
+                  } catch (Exception e2) {
+                  }
+                  o.put("media", ok);
+                } catch (Exception ex) {
+                }
+                return o.toString();
+              }
+
+              @JavascriptInterface
+              public String media() {
+                JSONObject o = new JSONObject();
+                try {
+                  MediaController c = ctl();
+                  if (c == null) {
+                    o.put("has", false);
+                  } else {
+                    MediaMetadata md = c.getMetadata();
+                    PlaybackState ps = c.getPlaybackState();
+                    o.put("has", true);
+                    o.put("title", md == null ? "" : s(md.getString(MediaMetadata.METADATA_KEY_TITLE)));
+                    o.put("artist", md == null ? "" : s(md.getString(MediaMetadata.METADATA_KEY_ARTIST)));
+                    o.put("playing", ps != null && ps.getState() == PlaybackState.STATE_PLAYING);
+                  }
+                } catch (Exception ex) {
+                }
+                return o.toString();
+              }
+
+              @JavascriptInterface
+              public void mediaCmd(String cmd) {
+                try {
+                  MediaController c = ctl();
+                  if (c == null) return;
+                  MediaController.TransportControls t = c.getTransportControls();
+                  if ("next".equals(cmd)) t.skipToNext();
+                  else if ("prev".equals(cmd)) t.skipToPrevious();
+                  else if ("play".equals(cmd)) t.play();
+                  else if ("pause".equals(cmd)) t.pause();
+                } catch (Exception ex) {
+                }
+              }
+
+              @JavascriptInterface
+              public void requestCalendar() {
+                runOnUiThread(new Runnable() {
+                  public void run() {
+                    requestPermissions(new String[]{Manifest.permission.READ_CALENDAR}, 1);
+                  }
+                });
+              }
+
+              @JavascriptInterface
+              public void openMediaSettings() {
+                runOnUiThread(new Runnable() {
+                  public void run() {
+                    startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
+                  }
+                });
+              }
             }
           }
           EOF
